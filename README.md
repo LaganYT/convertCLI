@@ -46,6 +46,12 @@ pnpm build
 pnpm install --global .
 ```
 
+## Publish a release
+
+Add an npm automation or granular access token to the GitHub repository as an Actions secret named `NPM_TOKEN`. The token needs permission to publish `@lagandevs/cvt`.
+
+Then open **Actions → Publish npm package → Run workflow**, select the repository's default branch, and enter an exact new version such as `0.2.0`. The workflow installs with the frozen lockfile, builds and tests the package, then publishes it to npm with provenance. You can publish under the `latest`, `next`, or `beta` tag.
+
 ## Requirements
 
 - Node.js 20 or newer

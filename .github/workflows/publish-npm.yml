@@ -1,0 +1,76 @@
+name: Publish npm package
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Exact version to publish, such as 0.2.0 or 1.0.0-beta.1
+        required: true
+        type: string
+      dist_tag:
+        description: npm distribution tag
+        required: true
+        default: latest
+        type: choice
+        options:
+          - latest
+          - next
+          - beta
+
+concurrency:
+  group: publish-npm
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    name: Test and publish
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.25.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+          scope: "@lagandevs"
+
+      - name: Validate release input
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          RELEASE_BRANCH: ${{ github.ref_name }}
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          if [ "$RELEASE_BRANCH" != "$DEFAULT_BRANCH" ]; then
+            echo "Select the default branch ($DEFAULT_BRANCH) when running this workflow."
+            exit 1
+          fi
+          node -e 'const v = process.env.RELEASE_VERSION; if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.test(v ?? "")) { console.error("Version must be exact semantic version syntax."); process.exit(1) }'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Set package version
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: pnpm version "$RELEASE_VERSION" --no-git-tag-version
+
+      - name: Test package
+        run: pnpm test
+
+      - name: Publish to npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          RELEASE_TAG: ${{ inputs.dist_tag }}
+        run: pnpm publish --access public --provenance --no-git-checks --tag "$RELEASE_TAG"
