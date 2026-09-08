@@ -1,0 +1,26 @@
+{
+  "name": "convert-file-cli",
+  "version": "0.1.0",
+  "description": "Fast image conversion from files or the macOS clipboard",
+  "type": "module",
+  "bin": {
+    "cvt": "dist/cli.js",
+    "convert-file": "dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc && chmod +x dist/cli.js",
+    "check": "tsc --noEmit",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "commander": "^14.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.1",
+    "typescript": "^5.9.2"
+  },
+  "packageManager": "pnpm@11.25.0"
+}
