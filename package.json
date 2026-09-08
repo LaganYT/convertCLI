@@ -7,16 +7,22 @@
     "cvt": "dist/cli.js",
     "convert-file": "dist/cli.js"
   },
+  "files": [
+    "dist",
+    "scripts",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsc && node scripts/make-executable.mjs",
     "dev": "pnpm build && node dist/cli.js",
     "check": "tsc --noEmit",
-    "test": "node --test"
+    "test": "pnpm build && node --test"
   },
   "engines": {
     "node": ">=20"
   },
   "dependencies": {
+    "@imagemagick/magick-wasm": "0.0.43",
     "commander": "^14.0.1"
   },
   "devDependencies": {

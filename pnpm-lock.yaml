@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@imagemagick/magick-wasm':
+        specifier: 0.0.43
+        version: 0.0.43
       commander:
         specifier: ^14.0.1
         version: 14.0.3
@@ -20,6 +23,9 @@ importers:
         version: 5.9.3
 
 packages:
+
+  '@imagemagick/magick-wasm@0.0.43':
+    resolution: {integrity: sha512-+Wlr3eEl4JlqLwrhAHBlf4VDzOWiFa8L2hYl7mOMXCgq896KghEnh3Go35nuZJMfmE6lX2waBZdr+u9FVluJLA==}
 
   '@types/node@24.13.3':
     resolution: {integrity: sha512-Dh8vAsV36ig5wa9OX4pXvMc9D3Veibfw2wix0CUwYODLD8nkj9UsLjASr49nPg+2eKzxhBV+v7L8pXvT4e639Q==}
@@ -37,6 +43,8 @@ packages:
     resolution: {integrity: sha512-AsuCzffGHJybSaRrmr5eHr81mwJU3kjw6M+uprWvCXiNeN9SOGwQ3Jn8jb8m3Z6izVgknn1R0FTCEAP2QrLY/w==}
 
 snapshots:
+
+  '@imagemagick/magick-wasm@0.0.43': {}
 
   '@types/node@24.13.3':
     dependencies:

@@ -7,6 +7,7 @@ import { extname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { runTui } from "./tui.js";
+import { convertWithBuiltInImageMagick } from "./image-engine.js";
 
 const execFileAsync = promisify(execFile);
 const formats = ["gif", "png", "jpg", "jpeg", "webp", "heic", "tiff", "bmp"] as const;
@@ -222,12 +223,6 @@ async function runMagick(args: string[]): Promise<void> {
 }
 
 async function convertImages(inputs: string[], options: ImageOptions): Promise<void> {
-  if (!(await commandExists("magick"))) {
-    const install = process.platform === "darwin" ? "brew install imagemagick"
-      : process.platform === "win32" ? "winget install ImageMagick.ImageMagick"
-      : "install the imagemagick package with your Linux package manager";
-    fail(`ImageMagick is required. Run: ${install}`);
-  }
   if (options.paste && inputs.length) fail("use either file inputs or --paste, not both");
 
   const useClipboard = options.paste || inputs.length === 0;
@@ -263,20 +258,31 @@ async function convertImages(inputs: string[], options: ImageOptions): Promise<v
       }
     }
 
-    const args: string[] = [...sourceInputs];
-    if (options.resize) args.push("-resize", options.resize);
-    if (options.quality) args.push("-quality", String(parsePositiveInteger(options.quality, "quality")));
-    if (format === "gif") {
-      args.push("-delay", String(parsePositiveInteger(options.delay, "delay")));
-      args.push("-loop", String(parsePositiveInteger(options.loop, "loop", true)));
-      args.push("-layers", "Optimize");
-    }
-    args.push(`${format}:${output}`);
-
     try {
-      await runMagick(args);
+      await convertWithBuiltInImageMagick({
+        inputs: sourceInputs,
+        output,
+        format,
+        delay: parsePositiveInteger(options.delay, "delay"),
+        loop: parsePositiveInteger(options.loop, "loop", true),
+        resize: options.resize,
+        quality: options.quality ? parsePositiveInteger(options.quality, "quality") : undefined,
+      });
     } catch (error) {
-      fail(error instanceof Error ? error.message : String(error));
+      if (await commandExists("magick")) {
+        const args: string[] = [...sourceInputs];
+        if (options.resize) args.push("-resize", options.resize);
+        if (options.quality) args.push("-quality", options.quality);
+        if (format === "gif") args.push("-delay", options.delay, "-loop", options.loop, "-layers", "Optimize");
+        args.push(`${format}:${output}`);
+        try {
+          await runMagick(args);
+        } catch {
+          fail(error instanceof Error ? error.message : String(error));
+        }
+      } else {
+        fail(error instanceof Error ? error.message : String(error));
+      }
     }
     if (options.copy !== false) {
       await copyFileToClipboard(output);

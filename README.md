@@ -37,7 +37,8 @@ pnpm install --global .
 ## Requirements
 
 - Node.js 20 or newer
-- ImageMagick: `brew install imagemagick` on macOS, `winget install ImageMagick.ImageMagick` on Windows, or your Linux distribution's `imagemagick` package
 - Linux clipboard access: `wl-clipboard` on Wayland or `xclip` on X11
+
+`cvt` includes [ImageMagick](https://imagemagick.org/) through the `@imagemagick/magick-wasm` WebAssembly build. Users do not need to install ImageMagick. If a system ImageMagick binary exists, `cvt` can use it as a fallback for HEIC encoding, which the smaller WebAssembly build omits.
 
 Use Windows Terminal, iTerm2, Terminal.app, or a modern Linux terminal for mouse support in the interactive interface.
