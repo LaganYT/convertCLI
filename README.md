@@ -2,6 +2,18 @@
 
 `cvt` converts image files and images copied to the clipboard on macOS, Windows, and Linux. It can make a GIF from one image or combine several images into an animation.
 
+## Run without installing
+
+```sh
+npx @lagandevs/cvt
+```
+
+`npx` downloads the package into its cache and opens the interactive interface. It does not add `cvt` globally. To run a one-line conversion through `npx`, put the CLI arguments after the package name:
+
+```sh
+npx @lagandevs/cvt photo.png -o photo.gif
+```
+
 Run `cvt` with no arguments to open the interactive terminal interface. Use the keyboard or mouse to choose a source and format, enter an output path, then convert without leaving the interface. You can drag a file from Finder into the Files field.
 
 After each conversion, `cvt` puts the converted file on the desktop clipboard. Paste it into Finder, Explorer, your Linux file manager, or another app. Pass `--no-copy` when using the one-line command if you only want the file saved to disk.

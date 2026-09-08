@@ -1,5 +1,5 @@
 {
-  "name": "convert-file-cli",
+  "name": "@lagandevs/cvt",
   "version": "0.1.0",
   "description": "Fast image conversion from files or the desktop clipboard",
   "type": "module",
@@ -16,7 +16,26 @@
     "build": "tsc && node scripts/make-executable.mjs",
     "dev": "pnpm build && node dist/cli.js",
     "check": "tsc --noEmit",
-    "test": "pnpm build && node --test"
+    "test": "pnpm build && node --test",
+    "prepack": "pnpm test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LaganYT/convertCLI.git"
+  },
+  "bugs": {
+    "url": "https://github.com/LaganYT/convertCLI/issues"
+  },
+  "homepage": "https://github.com/LaganYT/convertCLI#readme",
+  "keywords": [
+    "cli",
+    "image",
+    "converter",
+    "gif",
+    "imagemagick"
+  ],
+  "publishConfig": {
+    "access": "public"
   },
   "engines": {
     "node": ">=20"
