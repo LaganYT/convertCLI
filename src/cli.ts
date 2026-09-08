@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 import { Command, Option } from "commander";
 import { execFile, spawn } from "node:child_process";
-import { mkdtemp, rm, stat } from "node:fs/promises";
+import { mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { extname, join, resolve } from "node:path";
 import { promisify } from "node:util";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { runTui } from "./tui.js";
 
 const execFileAsync = promisify(execFile);
@@ -31,11 +31,26 @@ function fail(message: string): never {
 
 async function commandExists(command: string): Promise<boolean> {
   try {
-    await execFileAsync("/usr/bin/which", [command]);
+    await execFileAsync(process.platform === "win32" ? "where.exe" : "/usr/bin/which", [command]);
     return true;
   } catch {
     return false;
   }
+}
+
+function capture(command: string, args: string[], input?: string): Promise<Buffer> {
+  return new Promise((done, reject) => {
+    const child = spawn(command, args, { stdio: ["pipe", "pipe", "pipe"] });
+    const stdout: Buffer[] = [];
+    const stderr: Buffer[] = [];
+    child.stdout.on("data", (chunk: Buffer) => stdout.push(chunk));
+    child.stderr.on("data", (chunk: Buffer) => stderr.push(chunk));
+    child.once("error", reject);
+    child.once("exit", (code) => code === 0
+      ? done(Buffer.concat(stdout))
+      : reject(new Error(Buffer.concat(stderr).toString().trim() || `${command} exited with code ${code}`)));
+    child.stdin.end(input);
+  });
 }
 
 function lastErrorLine(error: unknown, fallback: string): string {
@@ -44,7 +59,8 @@ function lastErrorLine(error: unknown, fallback: string): string {
 }
 
 async function readClipboardImage(destination: string): Promise<string> {
-  if (process.platform !== "darwin") fail("clipboard images are currently supported on macOS only");
+  if (process.platform === "win32") return readWindowsClipboard(destination);
+  if (process.platform === "linux") return readLinuxClipboard(destination);
 
   try {
     const { stdout } = await execFileAsync("/usr/bin/osascript", [
@@ -88,8 +104,87 @@ async function readClipboardImage(destination: string): Promise<string> {
   }
 }
 
+async function readWindowsClipboard(destination: string): Promise<string> {
+  const script = `
+    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type -AssemblyName System.Drawing
+    $files = [System.Windows.Forms.Clipboard]::GetFileDropList()
+    if ($files.Count -gt 0) { Write-Output $files[0]; exit 0 }
+    if ([System.Windows.Forms.Clipboard]::ContainsImage()) {
+      $image = [System.Windows.Forms.Clipboard]::GetImage()
+      $image.Save($env:CVT_CLIPBOARD_DEST, [System.Drawing.Imaging.ImageFormat]::Png)
+      Write-Output $env:CVT_CLIPBOARD_DEST
+      exit 0
+    }
+    Write-Error "The clipboard does not contain an image or image file."
+    exit 2
+  `;
+  try {
+    const { stdout } = await execFileAsync("powershell.exe", ["-NoProfile", "-STA", "-Command", script], {
+      env: { ...process.env, CVT_CLIPBOARD_DEST: destination },
+    });
+    return stdout.trim();
+  } catch (error) {
+    fail(lastErrorLine(error, "could not read an image from the Windows clipboard"));
+  }
+}
+
+async function readLinuxClipboard(destination: string): Promise<string> {
+  const wayland = await commandExists("wl-paste");
+  const x11 = await commandExists("xclip");
+  if (!wayland && !x11) fail("clipboard support needs wl-clipboard on Wayland or xclip on X11");
+  try {
+    const listArgs = wayland ? ["--list-types"] : ["-selection", "clipboard", "-t", "TARGETS", "-o"];
+    const types = (await capture(wayland ? "wl-paste" : "xclip", listArgs)).toString();
+    if (types.includes("text/uri-list")) {
+      const uriArgs = wayland
+        ? ["--no-newline", "--type", "text/uri-list"]
+        : ["-selection", "clipboard", "-t", "text/uri-list", "-o"];
+      const uriList = (await capture(wayland ? "wl-paste" : "xclip", uriArgs)).toString();
+      const first = uriList.split(/\r?\n/).find((line) => line.startsWith("file://"));
+      if (first) return fileURLToPath(first.trim());
+    }
+    const mime = ["image/png", "image/jpeg", "image/webp", "image/tiff", "image/bmp"]
+      .find((candidate) => types.includes(candidate));
+    if (!mime) fail("the clipboard does not contain an image or image file");
+    const imageArgs = wayland
+      ? ["--type", mime]
+      : ["-selection", "clipboard", "-t", mime, "-o"];
+    await writeFile(destination, await capture(wayland ? "wl-paste" : "xclip", imageArgs));
+    return destination;
+  } catch (error) {
+    fail(lastErrorLine(error, "could not read an image from the Linux clipboard"));
+  }
+}
+
 async function copyFileToClipboard(file: string): Promise<void> {
-  if (process.platform !== "darwin") return;
+  if (process.platform === "win32") {
+    const script = `
+      Add-Type -AssemblyName System.Windows.Forms
+      $files = New-Object System.Collections.Specialized.StringCollection
+      [void]$files.Add($env:CVT_CLIPBOARD_FILE)
+      [System.Windows.Forms.Clipboard]::SetFileDropList($files)
+    `;
+    try {
+      await execFileAsync("powershell.exe", ["-NoProfile", "-STA", "-Command", script], {
+        env: { ...process.env, CVT_CLIPBOARD_FILE: file },
+      });
+      return;
+    } catch (error) {
+      fail(lastErrorLine(error, "could not copy the converted file to the Windows clipboard"));
+    }
+  }
+  if (process.platform === "linux") {
+    const uri = `${pathToFileURL(file).href}\n`;
+    try {
+      if (await commandExists("wl-copy")) await capture("wl-copy", ["--type", "text/uri-list"], uri);
+      else if (await commandExists("xclip")) await capture("xclip", ["-selection", "clipboard", "-t", "text/uri-list", "-i"], uri);
+      else fail("clipboard support needs wl-clipboard on Wayland or xclip on X11");
+      return;
+    } catch (error) {
+      fail(lastErrorLine(error, "could not copy the converted file to the Linux clipboard"));
+    }
+  }
   const script = `
     on run argv
       set the clipboard to POSIX file (item 1 of argv)
@@ -127,7 +222,12 @@ async function runMagick(args: string[]): Promise<void> {
 }
 
 async function convertImages(inputs: string[], options: ImageOptions): Promise<void> {
-  if (!(await commandExists("magick"))) fail("ImageMagick is required. Install it with: brew install imagemagick");
+  if (!(await commandExists("magick"))) {
+    const install = process.platform === "darwin" ? "brew install imagemagick"
+      : process.platform === "win32" ? "winget install ImageMagick.ImageMagick"
+      : "install the imagemagick package with your Linux package manager";
+    fail(`ImageMagick is required. Run: ${install}`);
+  }
   if (options.paste && inputs.length) fail("use either file inputs or --paste, not both");
 
   const useClipboard = options.paste || inputs.length === 0;
@@ -191,7 +291,7 @@ async function convertImages(inputs: string[], options: ImageOptions): Promise<v
 
 const program = new Command()
   .name("cvt")
-  .description("Convert images from files or the macOS clipboard")
+  .description("Convert images from files or the desktop clipboard")
   .version("0.1.0")
   .showHelpAfterError();
 
@@ -199,7 +299,7 @@ program
   .command("image", { isDefault: true })
   .description("Convert one image, or combine several images into an animated GIF")
   .argument("[inputs...]", "input image files in frame order")
-  .option("-p, --paste", "read an image directly from the macOS clipboard")
+  .option("-p, --paste", "read an image directly from the desktop clipboard")
   .option("-o, --output <file>", "output path")
   .addOption(new Option("-f, --format <format>", "output format when no extension is given").choices([...formats]))
   .option("--delay <centiseconds>", "GIF frame delay in hundredths of a second", "10")

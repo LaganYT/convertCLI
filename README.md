@@ -1,10 +1,10 @@
 # cvt
 
-`cvt` converts image files and images copied to the macOS clipboard. It can make a GIF from one image or combine several images into an animation.
+`cvt` converts image files and images copied to the clipboard on macOS, Windows, and Linux. It can make a GIF from one image or combine several images into an animation.
 
 Run `cvt` with no arguments to open the interactive terminal interface. Use the keyboard or mouse to choose a source and format, enter an output path, then convert without leaving the interface. You can drag a file from Finder into the Files field.
 
-After each conversion, `cvt` puts the converted file on the macOS clipboard. Paste it into Finder or another app with Command-V. Pass `--no-copy` when using the one-line command if you only want the file saved to disk.
+After each conversion, `cvt` puts the converted file on the desktop clipboard. Paste it into Finder, Explorer, your Linux file manager, or another app. Pass `--no-copy` when using the one-line command if you only want the file saved to disk.
 
 ## Examples
 
@@ -34,4 +34,10 @@ pnpm build
 pnpm install --global .
 ```
 
-Requires Node.js 20 or newer and ImageMagick (`brew install imagemagick`). Clipboard input requires macOS.
+## Requirements
+
+- Node.js 20 or newer
+- ImageMagick: `brew install imagemagick` on macOS, `winget install ImageMagick.ImageMagick` on Windows, or your Linux distribution's `imagemagick` package
+- Linux clipboard access: `wl-clipboard` on Wayland or `xclip` on X11
+
+Use Windows Terminal, iTerm2, Terminal.app, or a modern Linux terminal for mouse support in the interactive interface.
