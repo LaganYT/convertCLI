@@ -5,6 +5,7 @@ import { mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { extname, join, resolve } from "node:path";
 import { promisify } from "node:util";
+import { fileURLToPath } from "node:url";
 import { runTui } from "./tui.js";
 
 const execFileAsync = promisify(execFile);
@@ -47,9 +48,10 @@ async function readClipboardImage(destination: string): Promise<string> {
 
   try {
     const { stdout } = await execFileAsync("/usr/bin/osascript", [
-      "-e", "POSIX path of (the clipboard as alias)",
+      "-l", "JavaScript", "-e",
+      'ObjC.import("AppKit"); ObjC.unwrap($.NSPasteboard.generalPasteboard.stringForType("public.file-url"))',
     ]);
-    const clipboardFile = stdout.trim();
+    const clipboardFile = fileURLToPath(stdout.trim());
     if (clipboardFile && (await stat(clipboardFile)).isFile()) return clipboardFile;
   } catch {
     // The clipboard may contain image pixels instead of a file reference.
