@@ -7,7 +7,7 @@ import { extname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { runTui } from "./tui.js";
-import { convertWithBuiltInImageMagick } from "./image-engine.js";
+import { convertWithBuiltInImageMagick, inspectWithBuiltInImageMagick } from "./image-engine.js";
 
 const execFileAsync = promisify(execFile);
 const formats = ["gif", "png", "jpg", "jpeg", "webp", "heic", "tiff", "bmp"] as const;
@@ -80,12 +80,12 @@ async function readClipboardImage(destination: string): Promise<string> {
         set imageData to the clipboard as «class PNGf»
       on error
         try
-          set imageData to the clipboard as TIFF picture
+          set imageData to the clipboard as «class TIFF»
         on error
           error "The clipboard does not contain an image or image file. Copy one, then try again."
         end try
       end try
-      set outputFile to open for access POSIX file (item 1 of argv) with write permission
+      set outputFile to open for access (POSIX file (item 1 of argv)) with write permission
       try
         set eof outputFile to 0
         write imageData to outputFile
@@ -295,6 +295,22 @@ async function convertImages(inputs: string[], options: ImageOptions): Promise<v
   }
 }
 
+async function inspectImages(args: string[]): Promise<void> {
+  const paste = args.includes("--paste");
+  const inputs = args.filter((arg) => arg !== "--paste").map((input) => resolve(input));
+  let temporaryDirectory: string | undefined;
+  try {
+    if (paste) {
+      temporaryDirectory = await mkdtemp(join(tmpdir(), "cvt-inspect-"));
+      inputs.push(await readClipboardImage(join(temporaryDirectory, "clipboard-image")));
+    }
+    if (inputs.length === 0) fail("no source image selected");
+    process.stdout.write(`${JSON.stringify(await inspectWithBuiltInImageMagick(inputs))}\n`);
+  } finally {
+    if (temporaryDirectory) await rm(temporaryDirectory, { recursive: true, force: true });
+  }
+}
+
 const program = new Command()
   .name("cvt")
   .description("Convert images from files or the desktop clipboard")
@@ -324,7 +340,9 @@ Examples:
 `)
   .action(convertImages);
 
-if (process.argv.length === 2) {
+if (process.argv[2] === "__inspect") {
+  inspectImages(process.argv.slice(3)).catch((error: unknown) => fail(error instanceof Error ? error.message : String(error)));
+} else if (process.argv.length === 2) {
   runTui().catch((error: unknown) => fail(error instanceof Error ? error.message : String(error)));
 } else {
   program.parseAsync().catch((error: unknown) => fail(error instanceof Error ? error.message : String(error)));

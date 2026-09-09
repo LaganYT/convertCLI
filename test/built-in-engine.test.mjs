@@ -27,3 +27,22 @@ test("converts PNG to GIF without a system ImageMagick binary", async () => {
   assert.ok((await stat(output)).size > 0);
   assert.equal((await readFile(output)).subarray(0, 6).toString(), "GIF89a");
 });
+
+test("inspects image metadata and produces an ANSI preview payload", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "cvt-inspector-test-"));
+  const input = join(directory, "input.png");
+  await writeFile(input, onePixelPng);
+
+  const cli = resolve("dist/cli.js");
+  const { stdout } = await execFileAsync(process.execPath, [cli, "__inspect", input], {
+    env: { ...process.env, PATH: "" },
+  });
+  const inspection = JSON.parse(stdout);
+
+  assert.equal(inspection.format, "PNG");
+  assert.equal(inspection.width, 1);
+  assert.equal(inspection.height, 1);
+  assert.equal(inspection.frames, 1);
+  assert.ok(inspection.bytes > 0);
+  assert.equal(Buffer.from(inspection.thumbnail.rgba, "base64").length, 4);
+});

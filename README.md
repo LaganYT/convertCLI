@@ -16,6 +16,8 @@ npx @lagandevs/cvt photo.png -o photo.gif
 
 Run `cvt` with no arguments to open the interactive terminal interface. Use the keyboard or mouse to choose a source and format, enter an output path, then convert without leaving the interface. You can drag a file from Finder into the Files field.
 
+The source panel inspects the selected file or clipboard before conversion. It shows a terminal thumbnail, dimensions, input format, file size, frame count, animation duration, and transparency.
+
 After each conversion, `cvt` puts the converted file on the desktop clipboard. Paste it into Finder, Explorer, your Linux file manager, or another app. Pass `--no-copy` when using the one-line command if you only want the file saved to disk.
 
 ## Examples

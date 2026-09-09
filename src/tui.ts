@@ -7,6 +7,17 @@ const formats = ["gif", "png", "jpg", "webp", "heic", "tiff", "bmp"] as const;
 type Format = (typeof formats)[number];
 type Field = "source" | "files" | "format" | "output" | "delay" | "resize" | "convert";
 
+type Inspection = {
+  format: string;
+  width: number;
+  height: number;
+  bytes: number;
+  frames: number;
+  durationMs: number;
+  transparency: boolean;
+  thumbnail: { width: number; height: number; rgba: string };
+};
+
 type State = {
   source: "clipboard" | "files";
   files: string;
@@ -18,6 +29,9 @@ type State = {
   status: string;
   error: string;
   busy: boolean;
+  inspecting: boolean;
+  inspection?: Inspection;
+  inspectionError: string;
 };
 
 const fields: Field[] = ["source", "files", "format", "output", "delay", "resize", "convert"];
@@ -63,6 +77,64 @@ function runConversion(state: State): Promise<{ ok: boolean; message: string }> 
   });
 }
 
+function runInspection(state: State): Promise<{ inspection?: Inspection; error?: string }> {
+  const args = [process.argv[1]!, "__inspect"];
+  if (state.source === "clipboard") args.push("--paste");
+  else args.push(...parseFiles(state.files));
+  return new Promise((done) => {
+    const child = spawn(process.execPath, args, { stdio: ["ignore", "pipe", "pipe"] });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (data) => stdout += data.toString());
+    child.stderr.on("data", (data) => stderr += data.toString());
+    child.once("error", (error) => done({ error: error.message }));
+    child.once("exit", (code) => {
+      if (code !== 0) {
+        const rawError = stderr.trim().replace(/^cvt:\s*/, "");
+        const error = rawError.includes("clipboard does not contain an image")
+          ? "Clipboard has no image. Copy an image or image file, then try again."
+          : rawError.replace(/^\d+:\d+: execution error:\s*/, "").replace(/\s*\(-?\d+\)$/, "");
+        done({ error: error || "Could not inspect this source" });
+        return;
+      }
+      try {
+        done({ inspection: JSON.parse(stdout) as Inspection });
+      } catch {
+        done({ error: "The source inspector returned invalid data" });
+      }
+    });
+  });
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 ** 2).toFixed(1)} MB`;
+}
+
+function previewLines(inspection: Inspection): string[] {
+  const pixels = Buffer.from(inspection.thumbnail.rgba, "base64");
+  const { width, height } = inspection.thumbnail;
+  const sample = (x: number, y: number): [number, number, number] => {
+    if (y >= height) return [24, 24, 24];
+    const offset = (y * width + x) * 4;
+    const alpha = (pixels[offset + 3] ?? 255) / 255;
+    const background = 34;
+    return [0, 1, 2].map((channel) => Math.round((pixels[offset + channel] ?? 0) * alpha + background * (1 - alpha))) as [number, number, number];
+  };
+  const lines: string[] = [];
+  for (let y = 0; y < height; y += 2) {
+    let line = "";
+    for (let x = 0; x < width; x++) {
+      const top = sample(x, y);
+      const bottom = sample(x, y + 1);
+      line += `${ESC}38;2;${top.join(";")}m${ESC}48;2;${bottom.join(";")}m▀`;
+    }
+    lines.push(`${line}${ESC}0m`);
+  }
+  return lines;
+}
+
 export async function runTui(): Promise<void> {
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
     process.stderr.write("cvt: interactive mode needs a terminal. Run cvt --help for command options.\n");
@@ -81,9 +153,35 @@ export async function runTui(): Promise<void> {
     status: "Ready",
     error: "",
     busy: false,
+    inspecting: false,
+    inspectionError: "",
   };
   let previousDefault = defaultOutput(state);
   let stopped = false;
+  let inspectionTimer: NodeJS.Timeout | undefined;
+  let inspectionRequest = 0;
+
+  const requestInspection = (immediate = false) => {
+    if (inspectionTimer) clearTimeout(inspectionTimer);
+    const request = ++inspectionRequest;
+    state.inspection = undefined;
+    state.inspectionError = "";
+    if (state.source === "files" && parseFiles(state.files).length === 0) {
+      state.inspecting = false;
+      render();
+      return;
+    }
+    state.inspecting = true;
+    render();
+    inspectionTimer = setTimeout(async () => {
+      const result = await runInspection(state);
+      if (request !== inspectionRequest || stopped) return;
+      state.inspecting = false;
+      state.inspection = result.inspection;
+      state.inspectionError = result.error ?? "";
+      render();
+    }, immediate ? 0 : 350);
+  };
 
   const updateDefaultOutput = () => {
     const next = defaultOutput(state);
@@ -113,6 +211,18 @@ export async function runTui(): Promise<void> {
     add(`${marker("source")} Source  ${state.source === "clipboard" ? `${ESC}48;5;81;30m Clipboard ${ESC}0m  Files` : `Clipboard  ${ESC}48;5;81;30m Files ${ESC}0m`}`, "source");
     add();
     add(input("files", state.files, state.source === "clipboard" ? "not used while Clipboard is selected" : "type or drag a file here; use | between frames"), "files");
+    add();
+    add(`${ESC}1mSource preview${ESC}0m`);
+    if (state.inspecting) {
+      add(`${ESC}2mReading source…${ESC}0m`);
+    } else if (state.inspection) {
+      const info = state.inspection;
+      const duration = info.frames > 1 ? `  ${(info.durationMs / 1000).toFixed(2)}s` : "";
+      add(`${info.format}  ${info.width}×${info.height}  ${formatBytes(info.bytes)}  ${info.frames} frame${info.frames === 1 ? "" : "s"}${duration}  ${info.transparency ? "alpha" : "opaque"}`);
+      for (const line of previewLines(info)) add(` ${line}`);
+    } else {
+      add(`${ESC}${state.inspectionError ? "38;5;203m" : "2m"}${state.inspectionError || "Choose a file to inspect it"}${ESC}0m`);
+    }
     add();
     add(`${marker("format")} Format  ${formats.map((format) => format === state.format ? `${ESC}48;5;81;30m ${format.toUpperCase()} ${ESC}0m` : ` ${format.toUpperCase()} `).join(" ")}`, "format");
     add();
@@ -163,6 +273,7 @@ export async function runTui(): Promise<void> {
     if (field === "source") {
       state.source = state.source === "clipboard" ? "files" : "clipboard";
       updateDefaultOutput();
+      requestInspection(true);
     } else if (field === "format") {
       const index = formats.indexOf(state.format);
       state.format = formats[(index + direction + formats.length) % formats.length]!;
@@ -174,7 +285,10 @@ export async function runTui(): Promise<void> {
     const field = fields[state.focus];
     if (field === "files" || field === "output" || field === "delay" || field === "resize") {
       state[field] += text;
-      if (field === "files") updateDefaultOutput();
+      if (field === "files") {
+        updateDefaultOutput();
+        requestInspection();
+      }
     }
   };
 
@@ -183,6 +297,7 @@ export async function runTui(): Promise<void> {
   process.stdin.resume();
   process.stdout.write(`${ESC}?1049h${ESC}?25l${ESC}?1000h${ESC}?1006h`);
   render();
+  requestInspection(true);
 
   process.stdout.on("resize", render);
   process.stdin.on("keypress", async (text, key) => {
@@ -204,7 +319,10 @@ export async function runTui(): Promise<void> {
       const field = fields[state.focus];
       if (field === "files" || field === "output" || field === "delay" || field === "resize") {
         state[field] = state[field].slice(0, -1);
-        if (field === "files") updateDefaultOutput();
+        if (field === "files") {
+          updateDefaultOutput();
+          requestInspection();
+        }
       }
     } else if (text && !key.ctrl && !key.meta && text >= " ") edit(text);
     render();
