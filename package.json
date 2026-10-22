@@ -41,12 +41,12 @@
     "node": ">=20"
   },
   "dependencies": {
-    "@imagemagick/magick-wasm": "0.0.43",
-    "commander": "^14.0.1"
+    "@imagemagick/magick-wasm": "0.0.45",
+    "commander": "^15.0.0"
   },
   "devDependencies": {
-    "@types/node": "^24.13.3",
-    "typescript": "^5.9.2"
+    "@types/node": "^26.6.5",
+    "typescript": "^7.0.2"
   },
   "packageManager": "pnpm@11.25.0"
 }
